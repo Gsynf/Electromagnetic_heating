@@ -1,0 +1,220 @@
+C51 COMPILER V9.00   KEY                                                                   02/02/2018 20:55:55 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE KEY
+OBJECT MODULE PLACED IN key.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE key.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          /***************************************************************
+   2            4个按键
+   3            按键 1： 开关键
+   4                            0:  关机状态
+   5                            1： 关闭加热器 (和0状态一致）
+   6            按键 2：模式切换键 0 ~ 9；   如为编辑模式，则首位闪烁
+   7                    0： 初始状态和正常工作状态
+   8                            1： 设定当前时间，同时设定默认温度（非定时和定时非工作区间的设定温度）
+   9                            2： 设定定时起始时间1，同时设置第一段时间的设定温度
+  10                            3： 设定定时结束时间1
+  11                            4:  设定定时起始时间2，同时设置第二段时间的设定温度　
+  12                            5:　设定定时结束时间2
+  13                            6:  设定定时起始时间3，同时设置第三段时间的设定温度　
+  14                            7:　设定定时结束时间3
+  15                            8： 设定工作模式 （驱动开关 和 定时模式开关）
+  16                                          //一档
+  17                                          0: 驱动1开，非定时模式，1 灯亮
+  18                                          1：驱动1开，定时模式，1 灯亮，34灯亮    (非定时一档加热工作模式)
+  19                                          //二档
+  20                                          2: 驱动1，2开，非定时模式，2 灯亮
+  21                                          3：驱动1，2开，定时模式，2 灯亮，34灯亮  (非定时二档加热工作模式)
+  22                                          //三档
+  23                                          4: 驱动1~4开，非定时模式，1,2 灯亮
+  24                                          5：驱动1~4开，定时模式，1,2 灯亮 ，3,4灯亮  (非定时三档加热工作模式)
+  25          
+  26                                          3 灯亮：表示定时模式开，当前时间在定时区间内
+  27                                          4 灯亮：表示定时模式关，当前时间不在定时区间内
+  28            按键 3：移位键
+  29            按键 4：编辑模式（每次按下，值增加1）
+  30          
+  31          ==============================================================*/
+  32          #include "key.h"
+  33          #include "systemInit.h"
+  34          #include "TM1629.h"
+  35          #include "delay.h"
+  36          #include "eeprom.h"
+  37          #include "DS1302.h"
+  38          
+  39          
+  40          extern unsigned char* gp;
+  41          static unsigned char limit [6] = {3, 10, 6, 10, 10, 10};
+  42          
+  43          static void key1_scan ();//开关
+  44          static void key2_scan ();//设置
+  45          static void key3_scan ();//移位按键
+  46          static void key4_scan ();//增加按键
+  47          
+  48          sbit RemoteControl= P3^2;
+  49          char openctrl = 0, remoopenctrl=0; //控制开关键
+  50          void key_scan ()
+  51          {
+  52   1              TM1629_ReadKey ();
+  53   1              
+  54   1              switch (g_key_value)
+  55   1              {
+C51 COMPILER V9.00   KEY                                                                   02/02/2018 20:55:55 PAGE 2   
+
+  56   2                      case 0x08:
+  57   2                              if (openctrl!=0) break;
+  58   2                              key1_scan ();
+  59   2                              openctrl = 1;
+  60   2                              break;
+  61   2      
+  62   2                      case 0x04:
+  63   2                              key2_scan ();
+  64   2                              openctrl = 0;
+  65   2                              break;
+  66   2      
+  67   2                      case 0x02:
+  68   2                              key3_scan ();
+  69   2                              openctrl = 0;           
+  70   2                              break;
+  71   2      
+  72   2                      case 0x01:
+  73   2                              key4_scan ();
+  74   2                              openctrl = 0;
+  75   2                              break;
+  76   2                      default:
+  77   2                              openctrl = 0;
+  78   2                              break;
+  79   2              }
+  80   1              
+  81   1              // 遥控器
+  82   1              if (RemoteControl)
+  83   1                      remoopenctrl = 0;
+  84   1              if (!RemoteControl && remoopenctrl==0) {
+  85   2                      remoopenctrl = 1;
+  86   2                      key1_scan ();   
+  87   2              }
+  88   1              
+  89   1      }
+  90          
+  91          /*************************
+  92                  对应开关按键 
+  93          *************************/
+  94          static void key1_scan () {  //开关
+  95   1      
+  96   1              key1_mode ++;
+  97   1              key1_mode %= 3; 
+  98   1      //      Delay (180);
+  99   1              Delay (350);
+ 100   1      }
+ 101          
+ 102          /***********************
+ 103                  对应 设置模式选择 按键
+ 104          ***********************/
+ 105          static void key2_scan () {   //设置  
+ 106   1              if (key2_set_mode == 8) {       
+ 107   2                      write_eeprom_time_temp () ;
+ 108   2              }
+ 109   1      
+ 110   1              if (key2_set_mode == 0) {
+ 111   2                      current_time [4] = gSetTmpH; //显示默认的温度
+ 112   2                      current_time [5] = gSetTmpL;
+ 113   2              }
+ 114   1              if (key2_set_mode == 1) {
+ 115   2                      gSetTmpH = current_time [4];
+ 116   2                      gSetTmpL = current_time [5];
+ 117   2              }
+C51 COMPILER V9.00   KEY                                                                   02/02/2018 20:55:55 PAGE 3   
+
+ 118   1              if (key2_set_mode == 2)  {
+ 119   2                      set_stop_time[4] = set_start_time[4];
+ 120   2                      set_stop_time[5] = set_start_time[5];
+ 121   2              }
+ 122   1              if (key2_set_mode == 4)  {
+ 123   2                      set_stop_time2[4] = set_start_time2[4];
+ 124   2                      set_stop_time2[5] = set_start_time2[5];
+ 125   2              }
+ 126   1              if (key2_set_mode == 6)  {
+ 127   2                      set_stop_time3[4] = set_start_time3[4];
+ 128   2                      set_stop_time3[5] = set_start_time3[5];
+ 129   2              }
+ 130   1      
+ 131   1              key2_set_mode ++;
+ 132   1              key2_set_mode %= 9;  
+ 133   1              key3_shift_mode = 0;
+ 134   1      
+ 135   1      //      if (key2_set_mode == 1)
+ 136   1      //              Delay (140);
+ 137   1              if (key2_set_mode == 8 || key2_set_mode == 0)
+ 138   1                      Delay (200);
+ 139   1      }
+ 140          
+ 141          /********************************
+ 142                  ** 功能： 移位按键 循环扫描检测模式
+ 143          ********************************/
+ 144          static void key3_scan () {
+ 145   1      
+ 146   1              key3_shift_mode ++;
+ 147   1      
+ 148   1              if (key2_set_mode!=1 && key2_set_mode%2)        key3_shift_mode %= 4;
+ 149   1              else    key3_shift_mode %= 6;
+ 150   1              Delay (50);
+ 151   1      }
+ 152          
+ 153          /********************************
+ 154                  ** 功能： 增加按键
+ 155          ********************************/
+ 156          static void key4_scan () {
+ 157   1              
+ 158   1          if (key2_set_mode == 0)     return;
+ 159   1          if (key2_set_mode == 8) {
+ 160   2                      work_mode ++;
+ 161   2                      work_mode %= 6;
+ 162   2                      return;
+ 163   2              }
+ 164   1      
+ 165   1              getGpSetMode();
+ 166   1              gp += key3_shift_mode;
+ 167   1              *gp = *gp+1;
+ 168   1              if (*gp >= limit [key3_shift_mode] )
+ 169   1                      *gp = 0;
+ 170   1      
+ 171   1              if (key3_shift_mode == 1) { //小时第一位为2时，低位最高为3
+ 172   2                      gp --;
+ 173   2                      if (*gp == 2) {
+ 174   3                              gp ++;
+ 175   3                              *gp %= 4;
+ 176   3                      }
+ 177   2                      else gp ++;
+ 178   2              }               
+ 179   1      
+C51 COMPILER V9.00   KEY                                                                   02/02/2018 20:55:55 PAGE 4   
+
+ 180   1              //更新当前时间
+ 181   1              if (key2_set_mode == 1) {
+ 182   2                      // 重新设置当前时间
+ 183   2                      time_init [0] = 0;
+ 184   2                      time_init [1] = current_time[2]*16+current_time[3]; // 分钟
+ 185   2                      time_init [2] = current_time[0]*16+current_time[1]; // 小时
+ 186   2                      Set1302M(time_init);
+ 187   2              }
+ 188   1      
+ 189   1      //      Delay (20);
+ 190   1      }
+ 191          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    464    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      8    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

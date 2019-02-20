@@ -1,0 +1,71 @@
+C51 COMPILER V9.00   TIMER                                                                 02/02/2018 20:55:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE TIMER
+OBJECT MODULE PLACED IN timer.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE timer.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include <STC12C52.H>
+   2          #include "timer.h"
+   3          #include "intrins.h"
+   4          
+   5          
+   6          sbit Time_Point = P3^7; // 时间中间的两点
+   7          
+   8          /********************
+   9          * *名称：Timer_Init
+  10          * *功能：读键盘
+  11          *********************/
+  12          void Timer_Init(void)
+  13          {
+  14   1              AUXR = 0xC0;
+  15   1              TMOD = 0x00;
+  16   1              TL0  = T1MS;
+  17   1              TH0  = T1MS>>8;
+  18   1              TR0  = 1;
+  19   1              ET0  = 1;
+  20   1              EA   = 1; 
+  21   1      
+  22   1      }
+  23          
+  24          /********************
+  25          * *名称：Time0_intrrupt
+  26          * *功能：定时器0中断
+  27          *********************/
+  28          
+  29          void Time0_intrrupt() interrupt 1 
+  30          {
+  31   1              static idata int count0 = 1000; // n ms 
+  32   1              
+  33   1              if (count0 == 1000)
+  34   1              {       
+  35   2                      Time_Point = 1;
+  36   2              }
+  37   1              if (count0 == 2000)
+  38   1              {       
+  39   2                      Time_Point = 0;
+  40   2                      count0 = 0;
+  41   2              }
+  42   1              count0 ++;
+  43   1      }
+  44          
+  45          
+  46          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     92    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =      2    ----
+C51 COMPILER V9.00   TIMER                                                                 02/02/2018 20:55:56 PAGE 2   
+
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

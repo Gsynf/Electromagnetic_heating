@@ -1,0 +1,193 @@
+C51 COMPILER V9.00   MAIN                                                                  02/02/2018 20:55:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE main.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include "Delay.h"
+   2          #include "intrins.h"
+   3          #include "key.h"
+   4          #include "TM1629.h"
+   5          #include "eeprom.h"
+   6          #include "systemInit.h"
+   7          #include "work_mode.h"
+   8          #include "watchdog.h"
+   9          #include "DS1302.h"
+  10          
+  11          
+  12          #include <STC12C52.H>
+  13          
+  14          volatile unsigned char first_read_temp = 1;
+  15          
+  16          /**** AD 转换全局变量 ************************/
+  17          // AD 采样 对应显示2位温度值， 
+  18          volatile unsigned int current_temp = 0; //当前温度值
+  19          unsigned char idata gSetTmpH = 5,
+  20                  gSetTmpL = 0;
+  21          
+  22          /**** 按键控制 全局变量 ************************/
+  23          volatile unsigned char key1_mode = 0,         //按键1，开关键
+  24                                  key2_set_mode = 0,   //按键2，设置模式： 0 ~ 5
+  25                                  key3_shift_mode = 0; //按键3，移位模式
+  26          volatile unsigned char work_mode = 4;       //设定模式5，对应的工作模式值;
+  27          //0:非定时模式I档;1:定时模式I档;2:非定时模式II档;3:定时模式II档;4:非定时模式III档;5:定时模式III档;
+  28          volatile unsigned char is_heat_now = 0;         //是否处在加热状态，控制右上角的LED是否点亮
+  29          volatile unsigned char need_keep_temp = 0;              //是否需要保温（第一次升温不需要保温，第二次温度下降中要保温）
+  30          volatile unsigned char is_work = 0;                             //是否处在工作状态（控制定时模式下的显示问题）
+  31                                  
+  32                                  
+  33          /********* 时间 *************************
+  34                  0: 小时高位；
+  35                  1：小时低位；
+  36                  2：分钟高位；
+  37                  3：分钟低位；
+  38                  4: 当前温度或设定温度的高位
+  39                  5：当前温度或设定温度的低位 
+  40              ===================================*/
+  41          volatile unsigned char current_time [6]= {0,0,0,0,5};   //当前时间值（设置）
+  42          volatile unsigned char set_start_time [6]= {0,0,0,0,5}; //设定起始时间
+  43          volatile unsigned char set_stop_time [6];  //设定结束时间
+  44          volatile unsigned char idata set_start_time2 [6] = {0,0,0,0,5}; //设定起始时间2
+  45          volatile unsigned char idata set_stop_time2 [6] = {0,0,0,0};  //设定结束时间2
+  46          volatile unsigned char idata set_start_time3 [6] = {0,0,0,0,5}; //设定起始时间3
+  47          volatile unsigned char idata set_stop_time3 [6] = {0,0,0,0};  //设定结束时间3
+  48          unsigned char idata work_mode_dis [6] = {0x08, 0x68, 0x10, 0x70, 0x18, 0x78};
+  49                                          
+  50          
+  51          /************马达停止标志*****************/
+  52          /***********************************************
+  53          motor_num: 
+  54          0x00: 正常工作，
+  55          0xFF: 驱动板停止工作，但是电机仍然工作，一分钟后停止
+C51 COMPILER V9.00   MAIN                                                                  02/02/2018 20:55:56 PAGE 2   
+
+  56          ***********************************************/
+  57          volatile unsigned char motor_num = 0;
+  58          
+  59          
+  60          //采样周期
+  61          volatile unsigned char idata sample_period = 50;
+  62          
+  63          //时钟数据地址 格式为: 秒 分 时 日 月 星期 年 控制   
+  64          unsigned char idata time_init[7]= {0x00,0x00,0x18,0x01,0x01,0x07,0x12};
+  65          volatile unsigned char have_set_time = 0;  //是否设置了初始化时间
+  66          
+  67          
+  68          static unsigned int idata num = 100,
+  69                  num2 = 1000;
+  70          void detect () {
+  71   1              if (num -- == 0)        {
+  72   2                      enter_protect_mode ();     //异常报警检测
+  73   2                      num = 100;
+  74   2              }
+  75   1              if (num2 -- == 0)       {
+  76   2                      InitDisplay();             //初始化tm1629
+  77   2                      num2 = 1000;
+  78   2              }
+  79   1      }
+  80          
+  81          /********************
+  82          * *名称：main
+  83          * *功能：
+  84          *********************/
+  85          void main()
+  86          {
+  87   1              // sleep ...
+  88   1              Delay (100); //  100*0.1ms
+  89   1      
+  90   1              //初始化
+  91   1              system_init ();                                                         //初始化端口 
+  92   1              InitDisplay();                                          //初始化TM1629
+  93   1              clear_switch ();                                        //清空驱动状态信息
+  94   1              Motor_CTL = CLOSE_MOTOR_SPEAKER;                //关闭泵
+  95   1              
+  96   1              //从eeprom中读取设定的温度与时间值
+  97   1              read_eeprom_time_temp();
+  98   1               
+  99   1              if (have_set_time != 1) {  //第一写程序时要对时间芯片进行初始化，以后上电便不必在初始化
+ 100   2                      Set1302M(time_init); 
+ 101   2                      have_set_time = 1;
+ 102   2              }
+ 103   1              Delay (100);
+ 104   1              while(1)
+ 105   1              {
+ 106   2                      
+ 107   2                      Speaker_CTL = CLOSE_MOTOR_SPEAKER;
+ 108   2                      watch_dog();
+ 109   2                      ad_sample ();
+ 110   2      
+ 111   2                      if (key1_mode == 0) { //关机状态，等待开机。 0:表示关机状态;1:表示工作状态;2:表示关机操作
+ 112   3                              key_scan ();
+ 113   3                              key2_set_mode = 0;
+ 114   3                              DefaultState (0);
+ 115   3                              
+ 116   3                      detect();
+ 117   3                              
+C51 COMPILER V9.00   MAIN                                                                  02/02/2018 20:55:56 PAGE 3   
+
+ 118   3                              //超过温度上限，motor_num = 0xFF
+ 119   3                              //重新加热的时候，启动泵；超过温度上限时，等待一分钟停止泵
+ 120   3                              motor_timer (); 
+ 121   3      
+ 122   3                              continue;
+ 123   3                      }
+ 124   2      
+ 125   2                      if ( key1_mode == 2) { //关机操作
+ 126   3                              //关机时写入时间和温度的设定值
+ 127   3                              write_eeprom_time_temp () ; //此句没有必要，可删去
+ 128   3                              switch_off ();
+ 129   3                              Speaker_CTL = CLOSE_MOTOR_SPEAKER;
+ 130   3                              motor_num = 0xFF;  //关机标志
+ 131   3      
+ 132   3                              key1_mode = 0;   
+ 133   3      
+ 134   3                              continue;
+ 135   3                      }
+ 136   2                      
+ 137   2                      key_scan ();    //key1_mode == 1时，扫描开关键
+ 138   2              motor_timer (); //判断是否关泵
+ 139   2                      
+ 140   2                      detect();
+ 141   2                      
+ 142   2                      switch ( key2_set_mode )
+ 143   2                      {
+ 144   3                      case 0://空模式
+ 145   3                              DisplaySetState ();
+ 146   3                              enter_work_mode ();      //进入工作模式(第一个LED显示0的模式)
+ 147   3                              break;
+ 148   3                              
+ 149   3                      case 1:         //设置当前时间和默认温度
+ 150   3                      case 2:         //设定起始定时时间1             
+ 151   3                      case 3:         //设定终止定时时间1
+ 152   3                      case 4:         //设定起始定时时间2
+ 153   3                      case 5:         //设定终止定时时间2
+ 154   3                      case 6:         //设定起始定时时间3     
+ 155   3                      case 7:         //设定终止定时时间3
+ 156   3                      case 8:     //设定工作模式
+ 157   3                      case 9:         //
+ 158   3                              lighting_flash ();      //闪烁
+ 159   3                              DisplaySetState ();     
+ 160   3                              break;
+ 161   3                      }               
+ 162   2      
+ 163   2              }
+ 164   1      }
+ 165          
+ 166          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    218    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     30    ----
+   IDATA SIZE       =     44    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

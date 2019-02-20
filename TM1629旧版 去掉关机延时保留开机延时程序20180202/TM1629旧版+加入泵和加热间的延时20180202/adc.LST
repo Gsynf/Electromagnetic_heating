@@ -1,0 +1,137 @@
+C51 COMPILER V9.00   ADC                                                                   02/02/2018 20:55:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE ADC
+OBJECT MODULE PLACED IN adc.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE adc.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include "adc.h"
+   2          #include "Delay.h"
+   3          #include <intrins.h>
+   4          #include <math.h>
+   5          
+   6          #include <STC12C52.H>
+   7          
+   8          #define K1 56//5.62
+   9          #define K2 57//5.72
+  10          #define K3 58//5.85
+  11          #define K4 58//5.80
+  12          
+  13          //每段都加上15度，对应576
+  14          #define B1 10520//9944//9944.46
+  15          #define B2 10513//9937.22
+  16          #define B3 10466//9890.91
+  17          #define B4 10488//9912.17
+  18          
+  19          //每段都加上10度，对应384
+  20          //#define B1 10328//9944//9944.46
+  21          //#define B2 10321//9937.22
+  22          //#define B3 10274//9890.91
+  23          //#define B4 10296//9912.17
+  24          
+  25          //每段都加上5度，对应192
+  26          //#define B1 10136//9944//9944.46
+  27          //#define B2 10129//9937.22
+  28          //#define B3 10082//9890.91
+  29          //#define B4 10104//9912.17
+  30          
+  31          //未修正的
+  32          //#define B1 9944//9944.46
+  33          //#define B2 9937//9937.22
+  34          //#define B3 9890//9890.91
+  35          //#define B4 9912//9912.17
+  36          
+  37          //38.5对应1度，第一段减5度，对应减去192
+  38          //每段都减去5度，对应减去192
+  39          //#define B1 9752//9944//9944.46
+  40          //#define B2 9745//9937.22
+  41          //#define B3 9698//9890.91
+  42          //#define B4 9720//9912.17
+  43          
+  44          //每段都减去10度，对应减去384
+  45          //#define B1 9560//9944//9944.46
+  46          //#define B2 9553//9937.22
+  47          //#define B3 9506//9890.91
+  48          //#define B4 9528//9912.17
+  49          
+  50          //每段都减去15度，对应减去576
+  51          //#define B1 9368//9944//9944.46
+  52          //#define B2 9361//9937.22
+  53          //#define B3 9314//9890.91
+  54          //#define B4 9336//9912.17
+  55          
+C51 COMPILER V9.00   ADC                                                                   02/02/2018 20:55:56 PAGE 2   
+
+  56          //每段都减去20度，对应减去768
+  57          //#define B1 9176//9944//9944.46
+  58          //#define B2 9169//9937.22
+  59          //#define B3 9122//9890.91
+  60          //#define B4 9144//9912.17
+  61          
+  62          /********************
+  63          * *名称：get_AD_result
+  64          * *功能：得到AD转换数据
+  65          *********************/
+  66          sfr P1ASF     = 0x9D;
+  67          sfr ADC_RES   = 0xBD;
+  68          
+  69          unsigned int get_AD_result(unsigned char channel)
+  70          {  
+  71   1          idata int num = 0;
+  72   1              P1ASF     = 0x03;
+  73   1              ADC_RES   = 0;
+  74   1      
+  75   1          channel &= 0x07;                //0000,0111 清0高5位
+  76   1      
+  77   1          ADC_CONTR |= channel;           //选择 A/D 当前通道
+  78   1              _nop_();_nop_();_nop_();_nop_();_nop_();
+  79   1      
+  80   1                                                            //使输入电压达到稳定
+  81   1          ADC_CONTR |= 0x08;              //0000,1000 令 ADCS = 1, 启动A/D转换,
+  82   1              _nop_();_nop_();_nop_();_nop_();_nop_();
+  83   1      
+  84   1      
+  85   1          while (num++ < 10000)                       //等待A/D转换结束
+  86   1          {
+  87   2              if (ADC_CONTR & 0x10)       //0001,0000 测试A/D转换结束否
+  88   2                      break; 
+  89   2          }
+  90   1        
+  91   1              ADC_CONTR &= 0xE0;               //1110,0000 清 ADC_FLAG, ADC_START 位和低 3 位
+  92   1              _nop_();_nop_();_nop_();_nop_();_nop_(); 
+  93   1      //  ADC_CONTR &= 0xE7;              //1111,0111 清 ADC_FLAG 位, 关闭A/D转换, 
+  94   1      
+  95   1          return (ADC_RES); //返回 A/D 8 位转换结果
+  96   1      }
+  97          
+  98          
+  99          unsigned int AD_Filter2(unsigned char channel_number) {
+ 100   1              unsigned int idata average = 0;
+ 101   1              unsigned char idata i;
+ 102   1      
+ 103   1              for (i=0; i<6; i++)
+ 104   1                      average += get_AD_result(channel_number) ;
+ 105   1      
+ 106   1              return average/30; //47; // /6:average; /10:convert to temperature
+ 107   1      }
+ 108          
+ 109          
+ 110          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    138    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+C51 COMPILER V9.00   ADC                                                                   02/02/2018 20:55:56 PAGE 3   
+
+   DATA SIZE        =      2    ----
+   IDATA SIZE       =      5    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

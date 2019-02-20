@@ -1,0 +1,15 @@
+"STARTUP.obj",
+"watchdog.obj",
+"eeprom.obj",
+"key.obj",
+"Delay.obj",
+"systemInit.obj",
+"DS18B20.obj",
+"TM1629.obj",
+"main.obj",
+"work_mode.obj",
+"DS1302.obj",
+"adc.obj",
+"timer.obj" 
+TO "tm1629" 
+RAMSIZE(256) 

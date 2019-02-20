@@ -1,0 +1,414 @@
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE WORK_MODE
+OBJECT MODULE PLACED IN work_mode.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE work_mode.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEX
+                    -TEND
+
+line level    source
+
+   1          #include "work_mode.h"
+   2          #include "TM1629.h"
+   3          #include "delay.h"
+   4          #include "watchdog.h"
+   5          #include "DS18B20.h"
+   6          #include "DS1302.h"
+   7          #include "adc.h"
+   8          
+   9          
+  10          //温度上限转化值
+  11          static unsigned int up_temp; //温度上限
+  12          
+  13          static unsigned char _i;
+  14          
+  15          
+  16          /********************
+  17          * *名称：
+  18          * *功能：关闭四个驱动（右侧）
+  19          *********************/
+  20          void switch_off(void)
+  21          {
+  22   1              clear_switch ();
+  23   1              Motor_CTL = CLOSE_MOTOR_SPEAKER;        
+  24   1              need_keep_temp = 0;
+  25   1      }
+  26          
+  27          static unsigned char is_open_or_close_switch = 0;       //是否是打开或者关闭驱动
+  28          static void switch_delay () {
+  29   1              if (is_open_or_close_switch == 1) {
+  30   2                      Delay (200);
+  31   2              }
+  32   1      }
+  33          
+  34          /***************************
+  35          * * 功能：清空驱动
+  36          * *
+  37          **************************/
+  38          void clear_switch () {
+  39   1              if (is_heat_now == 1) is_open_or_close_switch = 1;
+  40   1              
+  41   1              CTL1 = CLOSE_CTL;
+  42   1              switch_delay ();
+  43   1              CTL2 = CLOSE_CTL;
+  44   1              switch_delay ();
+  45   1              CTL3 = CLOSE_CTL;
+  46   1              switch_delay ();
+  47   1              CTL4 = CLOSE_CTL;
+  48   1      
+  49   1              //停止加热:
+  50   1              is_heat_now = 0;
+  51   1              is_open_or_close_switch = 0;
+  52   1      }
+  53          
+  54          static void heat_mode() {
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 2   
+
+  55   1              switch (work_mode / 2) {
+  56   2              case 0: //1档加热
+  57   2                      CTL1 = OPEN_CTL;
+  58   2                      switch_delay ();
+  59   2                      CTL2 = OPEN_CTL;
+  60   2                      switch_delay ();
+  61   2                      CTL3 = CLOSE_CTL;
+  62   2                      switch_delay ();
+  63   2                      CTL4 = CLOSE_CTL;       
+  64   2                      break;
+  65   2      
+  66   2              case 1: //2档加热
+  67   2                      CTL1 = OPEN_CTL;
+  68   2                      switch_delay ();
+  69   2                      CTL2 = OPEN_CTL;
+  70   2                      switch_delay ();
+  71   2                      CTL3 = OPEN_CTL;
+  72   2                      switch_delay ();
+  73   2                      CTL4 = CLOSE_CTL;
+  74   2                      break;
+  75   2      
+  76   2              case 2: //3档加热
+  77   2                      CTL1 = OPEN_CTL;
+  78   2                      switch_delay ();
+  79   2                      CTL2 = OPEN_CTL;
+  80   2                      switch_delay ();
+  81   2                      CTL3 = OPEN_CTL;
+  82   2                      switch_delay ();
+  83   2                      CTL4 = OPEN_CTL;
+  84   2                      break;
+  85   2              }
+  86   1      }
+  87          //加热
+  88          static void heat ()
+  89          {
+  90   1              //
+  91   1              if (current_temp > up_temp)     { //停止加热
+  92   2                      clear_switch ();
+  93   2                      motor_num = 0xFF;
+  94   2                      need_keep_temp = 1;
+  95   2              }
+  96   1              else {
+  97   2                      
+  98   2                      if (current_temp >= (up_temp-7)) {
+  99   3                              if (need_keep_temp) { //判断是否需要保温
+ 100   4                                      clear_switch ();
+ 101   4                                      Motor_CTL = CLOSE_MOTOR_SPEAKER;
+ 102   4                                      return;
+ 103   4                              }
+ 104   3                      }
+ 105   2                      need_keep_temp = 0;
+ 106   2      
+ 107   2                      if (is_heat_now == 0) is_open_or_close_switch = 1;
+ 108   2                      if(Motor_CTL == 0)
+ 109   2                      {
+ 110   3                              Motor_CTL = OPEN_MOTOR_SPEAKER;         //打开泵
+ 111   3                              Delay(5000);
+ 112   3                              heat_mode();
+ 113   3                      }
+ 114   2                      //加热  
+ 115   2                      is_heat_now = 1;        //正在加热
+ 116   2                      
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 3   
+
+ 117   2                      is_open_or_close_switch = 0;
+ 118   2      
+ 119   2          }
+ 120   1      }
+ 121          
+ 122          
+ 123          /*************************************
+ 124          * *名称：enter_timing_mode
+ 125          * *功能：定时模式。判断在设定时间之内工作
+ 126          *************************************/
+ 127          static void among_work_time () {
+ 128   1              is_work = 1;
+ 129   1              heat ();
+ 130   1      }
+ 131          
+ 132          static void not_among_work_time (unsigned char open)
+ 133          {
+ 134   1              if (key1_mode == 0) WriteWord (8, 0);
+ 135   1              else WriteWord (8,open+0x20);
+ 136   1              clear_switch ();
+ 137   1              Motor_CTL = CLOSE_MOTOR_SPEAKER;        //不在工作时间内时，关闭泵
+ 138   1              is_work = 0;
+ 139   1      }
+ 140          
+ 141          static unsigned int get_itime (unsigned char* gp)
+ 142          {
+ 143   1              return ( (*gp++)*10 + (*gp++) ) * 60 + (*gp++)*10 +  (*gp++);
+ 144   1      }
+ 145          
+ 146          static unsigned int idata s_timer, e_timer, 
+ 147                  s_timer2, e_timer2, 
+ 148                  s_timer3, e_timer3,
+ 149                  time;
+ 150          static unsigned char is_among_time = 0;
+ 151          static void IsAmongTime (unsigned int st, unsigned int et, unsigned char nn)
+ 152          {
+ 153   1              if (et >= st) {
+ 154   2                      if ((time >= st)&&(time < et))  
+ 155   2                              is_among_time = nn;     
+ 156   2              }
+ 157   1              else {
+ 158   2                      if (!((time > et)&&(time < st)))
+ 159   2                              is_among_time = nn;
+ 160   2              }
+ 161   1      
+ 162   1      }
+ 163          
+ 164          static void enter_timing_mode (unsigned char open)
+ 165          {
+ 166   1              is_among_time = 0;
+ 167   1              s_timer = get_itime (set_start_time);
+ 168   1              e_timer = get_itime (set_stop_time);
+ 169   1              s_timer2 = get_itime (set_start_time2);
+ 170   1              e_timer2 = get_itime (set_stop_time2);
+ 171   1              s_timer3 = get_itime (set_start_time3);
+ 172   1              e_timer3 = get_itime (set_stop_time3);
+ 173   1      
+ 174   1              time = get_itime (current_time);
+ 175   1      
+ 176   1              IsAmongTime (s_timer3, e_timer3, 1);
+ 177   1              IsAmongTime (s_timer2, e_timer2, 2);
+ 178   1              IsAmongTime (s_timer, e_timer, 3);
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 4   
+
+ 179   1      
+ 180   1              up_temp = set_start_time[4]*10 + set_start_time[5];
+ 181   1              if (is_among_time == 1) {
+ 182   2                      up_temp = set_start_time3[4]*10 + set_start_time3[5];
+ 183   2              } else if (is_among_time == 2) {
+ 184   2                      up_temp = set_start_time2[4]*10 + set_start_time2[5];
+ 185   2              }
+ 186   1              if (is_among_time) {
+ 187   2                      WriteWord (8, open);
+ 188   2                      among_work_time ();
+ 189   2              } else {
+ 190   2                      not_among_work_time (open);     
+ 191   2              }
+ 192   1      }
+ 193          
+ 194          /*******************************
+ 195          * *名称：work_mode
+ 196          * *功能：模式选择为0时，默认工作状态
+ 197          ********************************/
+ 198          void enter_work_mode ()
+ 199          {
+ 200   1              // 默认温度上限值
+ 201   1              up_temp = gSetTmpH * 10 + gSetTmpL;
+ 202   1      
+ 203   1              switch ( work_mode )
+ 204   1              {
+ 205   2              //定时模式
+ 206   2              case 1: //一档定时模式
+ 207   2                      enter_timing_mode (0x28);       
+ 208   2                      return;
+ 209   2              case 3: //二档定时模式
+ 210   2                      enter_timing_mode (0x30);
+ 211   2                      return;
+ 212   2              case 5: //三档定时模式
+ 213   2                      enter_timing_mode (0x38);
+ 214   2                      return;
+ 215   2      
+ 216   2               //非定时模式                   
+ 217   2              case 0: //一档非定时模式
+ 218   2              case 2: //二档非定时模式
+ 219   2              case 4: //三档非定时模式
+ 220   2                      WriteWord(8, work_mode_dis[work_mode]);
+ 221   2                      heat ();
+ 222   2                      break;                                                          
+ 223   2              }       
+ 224   1      
+ 225   1      }
+ 226          
+ 227          void protect_displsy ()
+ 228          {
+ 229   1              ad_sample ();  //采集当前温度值
+ 230   1              if (key1_mode == 0) {
+ 231   2                      DefaultState (1);
+ 232   2                      return;
+ 233   2              }
+ 234   1      
+ 235   1              key2_set_mode = 0;      
+ 236   1              DisplaySetState ();
+ 237   1      }
+ 238          
+ 239          void protect_proc ()
+ 240          {
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 5   
+
+ 241   1              clear_switch ();
+ 242   1              Motor_CTL = CLOSE_MOTOR_SPEAKER;
+ 243   1              Speaker_CTL = OPEN_MOTOR_SPEAKER;
+ 244   1              watch_dog();
+ 245   1      
+ 246   1              protect_displsy ();
+ 247   1      }
+ 248          
+ 249          void enter_protect_mode () {
+ 250   1      //      static unsigned char is_first_log = 0; //第一次上电
+ 251   1      
+ 252   1              while (AD_Filter2(1)>15)//10)//漏电保护;15对应约XXV
+ 253   1              {
+ 254   2                      WriteWord (8,0x01);
+ 255   2                      protect_proc ();
+ 256   2              }  
+ 257   1              
+ 258   1      
+ 259   1      //      while (AD_Filter2(1)>85)     //70 //超温保护    对应大约85度
+ 260   1              while (RD_T(1) > 85)
+ 261   1              {
+ 262   2                      WriteWord (8,0x80);
+ 263   2                      protect_proc ();
+ 264   2              } 
+ 265   1      
+ 266   1         
+ 267   1      //      if (AD_Filter2(2)<16)           //14)//22)     //防冻保护 
+ 268   1              if (current_temp < 3)
+ 269   1              {
+ 270   2                      clear_switch (); //多余 
+ 271   2      
+ 272   2      //              while (AD_Filter2(2)<20)//<18)          //重新启动，防止温度过低，冻坏电暖气
+ 273   2                      while (current_temp < 8) //10)
+ 274   2                  {
+ 275   3                              is_heat_now = 1;
+ 276   3                  Motor_CTL = OPEN_MOTOR_SPEAKER;                     //打开泵
+ 277   3      
+ 278   3                              heat_mode();
+ 279   3      
+ 280   3                              //如果是第一次上电，则所有档位均打开，以加快加热
+ 281   3      //                      if (is_first_log == 0) {
+ 282   3      //                              CTL1=OPEN_CTL; 
+ 283   3      //                              Delay (100);
+ 284   3      //                              CTL2=OPEN_CTL; 
+ 285   3      //                              Delay (100);
+ 286   3      //                              CTL3=OPEN_CTL; 
+ 287   3      //                              Delay (100);
+ 288   3      //                              CTL4=OPEN_CTL;
+ 289   3      //                              is_first_log = 1;
+ 290   3      //                      }
+ 291   3      //                      //如果不是第一次上电，则只开1档位
+ 292   3      //                      else CTL1=OPEN_CTL;
+ 293   3      
+ 294   3                              Speaker_CTL = OPEN_MOTOR_SPEAKER;
+ 295   3                              watch_dog();
+ 296   3                              WriteWord (8,0x04);
+ 297   3                              protect_displsy ();
+ 298   3                      }
+ 299   2              
+ 300   2                      Speaker_CTL = CLOSE_MOTOR_SPEAKER;                      //关闭蜂鸣器
+ 301   2              Motor_CTL = CLOSE_MOTOR_SPEAKER;                //关闭泵
+ 302   2                      clear_switch ();                                                        //关闭所有加热                  
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 6   
+
+ 303   2      
+ 304   2                      //当用户重新在5模式设置了加热档次后，才会触发到正常工作模式
+ 305   2                      //，否则降温后将再次进入防冻保护状态
+ 306   2      
+ 307   2                      //修改  ----  如果是定时模式，则开始烧起来
+ 308   2                      //      ----  如果是非定时模式，则清空工作模式
+ 309   2      //              if (work_mode % 2 == 0) {       //非定时模式
+ 310   2      //                      work_mode = 0xFF;   
+ 311   2      //              }
+ 312   2              }  
+ 313   1              
+ 314   1              while (AD_Filter2(0)>=8)//25)//漏水保护
+ 315   1              {
+ 316   2                      WriteWord (8,0x02);
+ 317   2                      protect_proc ();
+ 318   2              } 
+ 319   1       
+ 320   1              //add:
+ 321   1      //      if (work_mode == 0xFF)          //非定时模式
+ 322   1      //              WriteWord (8,0x00);     
+ 323   1              if (work_mode % 2 == 1) {       //定时模式
+ 324   2                      if (key1_mode == 0) {   //关机状态
+ 325   3                              enter_work_mode ();
+ 326   3                      }
+ 327   2              }
+ 328   1              
+ 329   1      }
+ 330          
+ 331          
+ 332          
+ 333          void motor_timer (void)
+ 334          {
+ 335   1              if (motor_num == 0xFF)//检测关机标志，等待大约1分钟后停止马达工作
+ 336   1              {
+ 337   2                      Delay (5);
+ 338   2                      _i += 1;
+ 339   2                      if (_i == 200)//218)
+ 340   2                      {
+ 341   3                              Motor_CTL = CLOSE_MOTOR_SPEAKER;
+ 342   3                              _i = 0;
+ 343   3                              motor_num = 0;
+ 344   3                      }
+ 345   2              }
+ 346   1      }
+ 347          
+ 348          
+ 349          void ad_sample ()
+ 350          {
+ 351   1              unsigned int idata tmp;
+ 352   1              if (--sample_period == 0 || key2_set_mode) {
+ 353   2                      //采集当前温度值
+ 354   2                      current_temp = RD_T(0);
+ 355   2                      if (current_temp >= 100)        current_temp = 99;
+ 356   2      
+ 357   2                      if (key2_set_mode != 1) {
+ 358   3                              current_time [4] = current_temp/10;
+ 359   3                              current_time [5] = current_temp%10;
+ 360   3                      }
+ 361   2              }
+ 362   1              if (sample_period == 0) {
+ 363   2                      // 采集当前时间
+ 364   2                      //hour:
+C51 COMPILER V9.00   WORK_MODE                                                             02/02/2018 20:55:56 PAGE 7   
+
+ 365   2                      tmp = Get1302Hour();
+ 366   2                      current_time [0] = tmp/16;
+ 367   2                      current_time [1] = tmp%16;
+ 368   2              
+ 369   2                      //minute:
+ 370   2                      tmp = Get1302Minute();
+ 371   2                      current_time [2] = tmp/16;
+ 372   2                      current_time [3] = tmp%16;
+ 373   2      
+ 374   2                      sample_period = 50;
+ 375   2              }
+ 376   1      
+ 377   1      }
+ 378          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1241    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     15    ----
+   IDATA SIZE       =     16    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,174 @@
+C51 COMPILER V9.00   DS1302                                                                02/02/2018 20:55:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE DS1302
+OBJECT MODULE PLACED IN DS1302.OBJ
+COMPILER INVOKED BY: D:\Keil\C51\BIN\C51.EXE DS1302.c OPTIMIZE(0,SPEED) BROWSE INCDIR(D:\Keil\C51\INC) DEBUG OBJECTEXTEN
+                    -D
+
+line level    source
+
+   1          #include <reg51.h>
+   2          #include <absacc.h>
+   3          #include <intrins.h>
+   4          
+   5          #include "DS1302.h"
+   6          
+   7          sbit T_CLK=P1^3;
+   8          sbit T_IO =P1^4;
+   9          sbit T_RST=P1^5;
+  10          
+  11          
+  12          
+  13          //********DS1302读写程序***************
+  14          /********************************************************************
+  15          函 数 名：RTInputByteM()
+  16          功    能：实时时钟写入一字节
+  17          说    明：往DS1302写入1Byte数据 (内部函数)
+  18          入口参数：d 写入的数据
+  19          返 回 值：无  
+  20          ***********************************************************************/
+  21          void RTInputByteM(unsigned char d)
+  22          {
+  23   1          unsigned char idata i;
+  24   1          for(i=8; i>0; i--)
+  25   1          {
+  26   2              T_IO = d&0x01; _nop_();_nop_();_nop_();
+  27   2                      T_CLK = 1; _nop_();_nop_();_nop_();
+  28   2                      T_CLK = 0; _nop_();_nop_();_nop_();
+  29   2      
+  30   2                  d = d >> 1;
+  31   2              }
+  32   1      }
+  33          /********************************************************************
+  34          函 数 名：RTOutputByteM()
+  35          功    能：实时时钟读取一字节
+  36          说    明：从DS1302读取1Byte数据 (内部函数)
+  37          入口参数：无  
+  38          返 回 值：ACC
+  39          设    计：zhaojunjie           日    期：2002-03-19
+  40          修    改：                     日    期：
+  41          ***********************************************************************/
+  42          unsigned char RTOutputByteM(void)
+  43          {
+  44   1          unsigned char idata i, DATA=0;
+  45   1          for(i=8; i>0; i--)
+  46   1          {
+  47   2                      _nop_();_nop_();_nop_();
+  48   2              DATA >>= 1; 
+  49   2      
+  50   2                      if (T_IO)
+  51   2                              DATA |= 0x80;
+  52   2                      
+  53   2                      _nop_();_nop_();_nop_();
+  54   2              T_CLK = 1; 
+C51 COMPILER V9.00   DS1302                                                                02/02/2018 20:55:56 PAGE 2   
+
+  55   2                      
+  56   2                      _nop_();_nop_();_nop_();
+  57   2              T_CLK = 0; 
+  58   2              }
+  59   1          return(DATA);
+  60   1      }
+  61          /********************************************************************
+  62          函 数 名：Write1302()功    能：往DS1302写入数据
+  63          说    明：先写地址，后写命令/数据 (内部函数)
+  64          调    用：RTInputByteM() , RTOutputByteM()
+  65          入口参数：ucAddr: DS1302地址, ucData: 要写的数据
+  66          返 回 值：无
+  67          ***********************************************************************/
+  68          void Write1302(unsigned char idata ucAddr, unsigned char idata ucDa)
+  69          {
+  70   1          T_RST = 0; _nop_();_nop_();_nop_();
+  71   1          T_CLK = 0;_nop_();_nop_();_nop_();
+  72   1              T_RST = 1;_nop_();_nop_();_nop_();
+  73   1      
+  74   1              RTInputByteM(ucAddr);   // 地址，命令
+  75   1      
+  76   1              _nop_();_nop_();_nop_();
+  77   1              RTInputByteM(ucDa);         // 写1Byte数据
+  78   1      
+  79   1          T_CLK = 1;_nop_();_nop_();_nop_();
+  80   1          T_RST = 0;_nop_();_nop_();_nop_();
+  81   1      }                                                          
+  82          /********************************************************************
+  83          函 数 名：Read1302()
+  84          功    能：读取DS1302某地址的数据
+  85          说    明：先写地址，后读命令/数据 (内部函数)
+  86          调    用：RTInputByteM() , RTOutputByteM()
+  87          入口参数：ucAddr: DS1302地址
+  88          返 回 值：ucData :读取的数据
+  89          ***********************************************************************/
+  90          unsigned char Read1302(unsigned char ucAddr)
+  91          {
+  92   1          unsigned char idata ucData;
+  93   1          T_RST = 0;_nop_();_nop_();_nop_();
+  94   1          T_CLK = 0;_nop_();_nop_();_nop_();
+  95   1          T_RST = 1;_nop_();_nop_();_nop_();
+  96   1          
+  97   1              RTInputByteM(ucAddr);             // 地址，命令
+  98   1              _nop_();_nop_();_nop_();
+  99   1              ucData = RTOutputByteM();         // 读1Byte数据
+ 100   1      
+ 101   1          T_CLK = 1;_nop_();_nop_();_nop_();
+ 102   1          T_RST = 0;_nop_();_nop_();_nop_();
+ 103   1          
+ 104   1              return(ucData);
+ 105   1      }
+ 106          /********************************************************************
+ 107          函 数 名：Set1302M()
+ 108          功    能：设置初始时间
+ 109          说    明：先写地址，后读命令/数据(寄存器多字节方式)
+ 110          调    用：Write1302()
+ 111          入口参数：pClock: 设置时钟数据地址 格式为: 秒 分 时 日 月 星期年
+ 112                                         7Byte (BCD码)1B 1B 1B 1B 1B  1B  1B
+ 113          返 回 值：无
+ 114          ***********************************************************************/
+ 115          void Set1302M(unsigned char *pClock)
+ 116          {
+C51 COMPILER V9.00   DS1302                                                                02/02/2018 20:55:56 PAGE 3   
+
+ 117   1          unsigned char idata i;
+ 118   1          unsigned char idata ucAddr = 0x80;
+ 119   1          Write1302(0x8e,0x00);           // 控制命令,WP=0,写操作
+ 120   1          for(i =7; i>0; i--)
+ 121   1          {
+ 122   2              Write1302(ucAddr,*pClock);  // 秒 分 时 日 月 星期 年
+ 123   2              pClock++;
+ 124   2              ucAddr +=2;
+ 125   2          }
+ 126   1          
+ 127   1              Write1302(0x8e,0x80);           // 控制命令,WP=1,写保护
+ 128   1      }
+ 129          
+ 130          
+ 131          
+ 132          unsigned char Get1302Minute()
+ 133          {
+ 134   1              unsigned char idata m;
+ 135   1              m = Read1302(0x083); //Delay11(50000);
+ 136   1              return m;
+ 137   1      }
+ 138           
+ 139          unsigned char Get1302Hour()
+ 140          {
+ 141   1              unsigned char idata h;
+ 142   1              h = Read1302(0x085); //Delay11(50000);
+ 143   1              return h;
+ 144   1      }
+ 145          
+ 146          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    308    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      7    ----
+   IDATA SIZE       =      8    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
